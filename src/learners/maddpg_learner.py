@@ -1,12 +1,12 @@
 import copy
 from components.episode_buffer import EpisodeBatch
-from modules.critics.coma import COMACritic
+from modules.critics.maddpg import MADDPGCritic
 from utils.rl_utils import build_td_lambda_targets
 import torch as th
 from torch.optim import RMSprop
 
 
-class COMALearner:
+class MADDPGLearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args
         self.n_agents = args.n_agents
@@ -19,7 +19,8 @@ class COMALearner:
 
         self.log_stats_t = -self.args.learner_log_interval - 1
 
-        self.critic = COMACritic(scheme, args)
+        self.critic = MADDPGCritic(scheme, args)
+        # Share MADDPG Critic parameters for cooperative task.
         self.target_critic = copy.deepcopy(self.critic)
 
         self.agent_params = list(mac.parameters())
@@ -64,7 +65,7 @@ class COMALearner:
         # Calculated baseline
         q_vals = q_vals.reshape(-1, self.n_actions)
         pi = mac_out.view(-1, self.n_actions)
-        baseline = (pi * q_vals).sum(-1).detach()
+        # baseline = (pi * q_vals).sum(-1).detach()
 
         # Calculate policy grad with mask
         q_taken = th.gather(q_vals, dim=1, index=actions.reshape(-1, 1)).squeeze(1)
@@ -72,7 +73,7 @@ class COMALearner:
         pi_taken[mask == 0] = 1.0
         log_pi_taken = th.log(pi_taken)
 
-        advantages = (q_taken - baseline).detach()
+        advantages = q_taken.detach()
 
         coma_loss = - ((advantages * log_pi_taken) * mask).sum() / mask.sum()
 
