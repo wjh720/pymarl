@@ -23,10 +23,17 @@ class BasicMAC:
         chosen_actions = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
         return chosen_actions
 
-    def forward(self, ep_batch, t, test_mode=False):
+    def forward(self, ep_batch, t, test_mode=False, sum_group=True):
         agent_inputs = self._build_inputs(ep_batch, t)
         avail_actions = ep_batch["avail_actions"][:, t]
         agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
+
+        if self.args.name == 'point_like_smac_parallel':
+            if sum_group:
+                agent_outs = agent_outs.sum(dim=1)
+                return agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
+            else:
+                return agent_outs.view(ep_batch.batch_size, self.n_agents, self.args.mixing_group_dim, -1)
 
         # Softmax the agent outputs if they're policy logits
         if self.agent_output_type == "pi_logits":

@@ -2,6 +2,7 @@ import copy
 from components.episode_buffer import EpisodeBatch
 from modules.mixers.vdn import VDNMixer
 from modules.mixers.qmix import QMixer
+from modules.mixers.point_like import PointLikeMixer
 import torch as th
 from torch.optim import RMSprop
 
@@ -22,6 +23,8 @@ class QLearner:
                 self.mixer = VDNMixer()
             elif args.mixer == "qmix":
                 self.mixer = QMixer(args)
+            elif args.mixer == "point_like":
+                self.mixer = PointLikeMixer(args)
             else:
                 raise ValueError("Mixer {} not recognised.".format(args.mixer))
             self.params += list(self.mixer.parameters())
@@ -48,33 +51,54 @@ class QLearner:
         mac_out = []
         self.mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length):
-            agent_outs = self.mac.forward(batch, t=t)
+            if self.args.name == 'point_like_smac_parallel':
+                agent_outs = self.mac.forward(batch, t=t, sum_group=False)
+            else:
+                agent_outs = self.mac.forward(batch, t=t)
+
             mac_out.append(agent_outs)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
 
         # Pick the Q-Values for the actions taken by each agent
-        chosen_action_qvals = th.gather(mac_out[:, :-1], dim=3, index=actions).squeeze(3)  # Remove the last dim
+        if self.args.name == 'point_like_smac_parallel':
+            repeated_actions = actions.repeat(1, 1, 1, self.args.mixing_group_dim)
+            repeated_actions = repeated_actions.view(list(repeated_actions.shape) + [1])
+            chosen_action_qvals = th.gather(mac_out[:, :-1], dim=4, index=repeated_actions).squeeze(4)  # Remove the last dim
+            mac_out = mac_out.sum(dim=3)
+        else:
+            chosen_action_qvals = th.gather(mac_out[:, :-1], dim=3, index=actions).squeeze(3)  # Remove the last dim
 
         # Calculate the Q-Values necessary for the target
         target_mac_out = []
         self.target_mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length):
-            target_agent_outs = self.target_mac.forward(batch, t=t)
+            if self.args.name == 'point_like_smac_parallel':
+                target_agent_outs = self.target_mac.forward(batch, t=t, sum_group=False)
+            else:
+                target_agent_outs = self.target_mac.forward(batch, t=t)
+
             target_mac_out.append(target_agent_outs)
 
         # We don't need the first timesteps Q-Value estimate for calculating targets
         target_mac_out = th.stack(target_mac_out[1:], dim=1)  # Concat across time
 
         # Mask out unavailable actions
-        target_mac_out[avail_actions[:, 1:] == 0] = -9999999
+        # target_mac_out[avail_actions[:, 1:] == 0] = -9999999
 
         # Max over target Q-Values
         if self.args.double_q:
             # Get actions that maximise live Q (for double q-learning)
             mac_out[avail_actions == 0] = -9999999
             cur_max_actions = mac_out[:, 1:].max(dim=3, keepdim=True)[1]
-            target_max_qvals = th.gather(target_mac_out, 3, cur_max_actions).squeeze(3)
-        else:
+
+            if self.args.name == 'point_like_smac_parallel':
+                repeated_cur_max_actions = cur_max_actions.repeat(1, 1, 1, self.args.mixing_group_dim)
+                repeated_cur_max_actions = repeated_cur_max_actions.view(list(repeated_cur_max_actions.shape) + [1])
+                target_max_qvals = th.gather(target_mac_out, dim=4, index=repeated_cur_max_actions).squeeze(
+                    4)  # Remove the last dim
+            else:
+                target_max_qvals = th.gather(target_mac_out, 3, cur_max_actions).squeeze(3)
+        else:  # TODO: Maybe wrong for point_like
             target_max_qvals = target_mac_out.max(dim=3)[0]
 
         # Mix

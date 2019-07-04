@@ -9,7 +9,10 @@ class RNNAgent(nn.Module):
 
         self.fc1 = nn.Linear(input_shape, args.rnn_hidden_dim)
         self.rnn = nn.GRUCell(args.rnn_hidden_dim, args.rnn_hidden_dim)
-        self.fc2 = nn.Linear(args.rnn_hidden_dim, args.n_actions)
+        if args.name == 'point_like_smac_parallel':
+            self.fc2 = nn.Linear(args.rnn_hidden_dim, args.mixing_group_dim * args.n_actions)
+        else:
+            self.fc2 = nn.Linear(args.rnn_hidden_dim, args.n_actions)
 
     def init_hidden(self):
         # make hidden states on same device as model
@@ -20,4 +23,8 @@ class RNNAgent(nn.Module):
         h_in = hidden_state.reshape(-1, self.args.rnn_hidden_dim)
         h = self.rnn(x, h_in)
         q = self.fc2(h)
+
+        if self.args.name == 'point_like_smac_parallel':
+            q = q.view(-1, self.args.mixing_group_dim, self.args.n_actions)
+
         return q, h
