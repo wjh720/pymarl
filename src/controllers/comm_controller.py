@@ -80,6 +80,8 @@ class CommMAC:
 
     def cuda(self):
         self.agent.cuda()
+        if self.communicating:
+            self.communication.cuda()
 
     def save_models(self, path):
         th.save(self.agent.state_dict(), "{}/agent.th".format(path))
