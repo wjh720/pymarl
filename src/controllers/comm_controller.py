@@ -122,6 +122,8 @@ class CommMAC:
         if self.communicating:
             input_shape += scheme["obs"]["vshape"] * min(self.n_agents - 1, self.comm_neighbor)
 
+        print(input_shape)
+
         return input_shape
 
     def _comm(self, batch, bs):
@@ -130,7 +132,5 @@ class CommMAC:
 
         c1 = th.cat([comm_vec[:, 1:, :], comm_vec[:, :1, :]], dim=1)
         c2 = th.cat([c1[:, 1:, :], c1[:, :1, :]], dim=1)
-
-        print('>>> comm')
 
         return th.cat([c1, c2], dim=2)
