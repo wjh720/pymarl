@@ -11,9 +11,10 @@ class CommMAC:
         self.n_agents = args.n_agents
 
         self.args = args
-        input_shape = self._get_input_shape(scheme)
         self.communicating = args.communicating
         self.comm_neighbor = args.comm_neighbor
+
+        input_shape = self._get_input_shape(scheme)
 
         self._build_agents(input_shape)
 
