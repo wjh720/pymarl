@@ -49,3 +49,4 @@ label: "default_label"
 # --- Communication parameters ---
 communicating: True
 comm_method: simple
+comm_neighbor: 3
