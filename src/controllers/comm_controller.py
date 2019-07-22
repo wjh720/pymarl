@@ -125,7 +125,7 @@ class CommMAC:
         comm_vec = comm_vec.reshape([bs, self.n_agents, -1])
 
         c1 = th.cat([comm_vec[:, 1:, :], comm_vec[:, :1, :]], dim=1)
-        c2 = th.cat([c1[:, 1:, :], c1[:, :1, :]], dim=2)
+        c2 = th.cat([c1[:, 1:, :], c1[:, :1, :]], dim=1)
 
         print('>>> comm')
 
