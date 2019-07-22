@@ -98,7 +98,7 @@ class CommMAC:
         inputs.append(batch["obs"][:, t])  # b1av
 
         if self.communicating:
-            inputs.append(self._comm(batch["obs"][:, t]), bs)
+            inputs.append(self._comm(batch["obs"][:, t], bs))
 
         if self.args.obs_last_action:
             if t == 0:
