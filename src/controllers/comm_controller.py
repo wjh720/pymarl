@@ -10,18 +10,15 @@ class CommMAC:
     def __init__(self, scheme, groups, args):
         self.n_agents = args.n_agents
         self.args = args
-        input_shape, comm_shape = self._get_input_shape(scheme)
+        input_shape = self._get_input_shape(scheme)
         self.communicating = args.communicating
 
-        if self.communicating:
-            self._build_agents(comm_shape)
-        else:
-            self._build_agents(input_shape)
+        self._build_agents(input_shape)
 
         self.agent_output_type = args.agent_output_type
 
         self.action_selector = action_REGISTRY[args.action_selector](args)
-        self.communication = comm_REGISTRY[args.comm_method](input_shape, args)
+        self.communication = comm_REGISTRY[args.comm_method](scheme["obs"]["vshape"], args)
 
         self.hidden_states = None
 
@@ -120,7 +117,7 @@ class CommMAC:
         if self.args.obs_agent_id:
             input_shape += self.n_agents
 
-        return input_shape, input_shape + scheme["obs"]["vshape"] * min(self.args.comm_neighbor, self.n_agents)
+        return input_shape
 
     def _comm(self, batch, bs):
         comm_vec = self.communication(batch.reshape(bs * self.n_agents, -1))
