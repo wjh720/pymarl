@@ -13,6 +13,7 @@ class CommMAC:
         self.args = args
         input_shape = self._get_input_shape(scheme)
         self.communicating = args.communicating
+        self.comm_neighbor = args.comm_neighbor
 
         self._build_agents(input_shape)
 
@@ -117,6 +118,8 @@ class CommMAC:
             input_shape += scheme["actions_onehot"]["vshape"][0]
         if self.args.obs_agent_id:
             input_shape += self.n_agents
+        if self.communicating:
+            input_shape += scheme["obs"]["vshape"] * min(self.n_agents - 1, self.comm_neighbor)
 
         return input_shape
 
