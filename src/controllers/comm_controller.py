@@ -11,8 +11,9 @@ class CommMAC:
         self.n_agents = args.n_agents
         self.args = args
         input_shape, comm_shape = self._get_input_shape(scheme)
+        self.communicating = args.communicating
 
-        if args.communicating:
+        if self.communicating:
             self._build_agents(comm_shape)
         else:
             self._build_agents(input_shape)
@@ -95,7 +96,9 @@ class CommMAC:
         bs = batch.batch_size
         inputs = []
         inputs.append(batch["obs"][:, t])  # b1av
-        inputs.append(self._comm(batch["obs"][:, t]))
+
+        if self.communicating:
+            inputs.append(self._comm(batch["obs"][:, t]))
 
         if self.args.obs_last_action:
             if t == 0:
@@ -124,5 +127,7 @@ class CommMAC:
 
         c1 = th.cat([comm_vec[:, 1:, :], comm_vec[:, :1, :]], dim=1)
         c2 = th.cat([c1[:, 1:, :], c1[:, :1, :]], dim=2)
+
+        print('>>> comm')
 
         return th.cat([c1, c2], dim=2)
