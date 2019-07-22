@@ -9,6 +9,7 @@ from modules.communications import REGISTRY as comm_REGISTRY
 class CommMAC:
     def __init__(self, scheme, groups, args):
         self.n_agents = args.n_agents
+
         self.args = args
         input_shape = self._get_input_shape(scheme)
         self.communicating = args.communicating
@@ -121,7 +122,7 @@ class CommMAC:
 
     def _comm(self, batch, bs):
         comm_vec = self.communication(batch.reshape(bs * self.n_agents, -1))
-        comm_vec.reshape_([bs, self.n_agents, -1])
+        comm_vec = comm_vec.reshape([bs, self.n_agents, -1])
 
         c1 = th.cat([comm_vec[:, 1:, :], comm_vec[:, :1, :]], dim=1)
         c2 = th.cat([c1[:, 1:, :], c1[:, :1, :]], dim=2)
