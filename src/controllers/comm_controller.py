@@ -98,7 +98,7 @@ class CommMAC:
         inputs.append(batch["obs"][:, t])  # b1av
 
         if self.communicating:
-            inputs.append(self._comm(batch["obs"][:, t]))
+            inputs.append(self._comm(batch["obs"][:, t]), bs)
 
         if self.args.obs_last_action:
             if t == 0:
@@ -120,8 +120,7 @@ class CommMAC:
 
         return input_shape, input_shape + scheme["obs"]["vshape"] * min(self.args.comm_neighbor, self.n_agents)
 
-    def _comm(self, batch):
-        bs = batch.batch_size
+    def _comm(self, batch, bs):
         comm_vec = self.communication(batch.reshape(bs * self.n_agents, -1))
         comm_vec.reshape_([bs, self.n_agents, -1])
 
