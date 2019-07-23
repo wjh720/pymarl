@@ -28,12 +28,12 @@ class CommMAC:
     def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False):
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
-        agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode)
+        agent_outputs, g = self.forward(ep_batch, t_ep, test_mode=test_mode)
         chosen_actions = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
-        return chosen_actions
+        return chosen_actions, g
 
     def forward(self, ep_batch, t, test_mode=False, sum_group=True):
-        agent_inputs = self._build_inputs(ep_batch, t)
+        agent_inputs, g = self._build_inputs(ep_batch, t)
         avail_actions = ep_batch["avail_actions"][:, t]
         agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
 
@@ -66,8 +66,7 @@ class CommMAC:
                 if getattr(self.args, "mask_before_softmax", True):
                     # Zero out the unavailable actions
                     agent_outs[reshaped_avail_actions == 0] = 0.0
-
-        return agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
+        return agent_outs.view(ep_batch.batch_size, self.n_agents, -1), g
 
     def init_hidden(self, batch_size):
         self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n_agents, -1)  # bav
@@ -99,8 +98,10 @@ class CommMAC:
         inputs = []
         inputs.append(batch["obs"][:, t])  # b1av
 
+        g = None
         if self.communicating:
-            inputs.append(self._comm(batch["obs"][:, t], bs))
+            comm_vec, g = self._comm(batch["obs"][:, t], bs)
+            inputs.append(comm_vec)
 
         if self.args.obs_last_action:
             if t == 0:
@@ -111,7 +112,7 @@ class CommMAC:
             inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
 
         inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
-        return inputs
+        return inputs, g
 
     def _get_input_shape(self, scheme):
         input_shape = scheme["obs"]["vshape"]
@@ -125,10 +126,10 @@ class CommMAC:
         return input_shape
 
     def _comm(self, batch, bs):
-        comm_vec = self.communication(batch.reshape(bs * self.n_agents, -1))
+        comm_vec, g = self.communication(batch.reshape(bs * self.n_agents, -1))
         comm_vec = comm_vec.reshape([bs, self.n_agents, -1])
 
         c1 = th.cat([comm_vec[:, 1:, :], comm_vec[:, :1, :]], dim=1)
         c2 = th.cat([c1[:, 1:, :], c1[:, :1, :]], dim=1)
 
-        return th.cat([c1, c2], dim=2)
+        return th.cat([c1, c2], dim=2), g.view([bs, self.n_agents, -1])

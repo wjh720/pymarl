@@ -30,6 +30,9 @@ class QLearner:
             self.params += list(self.mixer.parameters())
             self.target_mixer = copy.deepcopy(self.mixer)
 
+        if self.args.communicating:
+            self.params += list(self.mac.communication.parameters())
+
         self.optimiser = RMSprop(params=self.params, lr=args.lr, alpha=args.optim_alpha, eps=args.optim_eps)
 
         # a little wasteful to deepcopy (e.g. duplicates action selector), but should work for any MAC
@@ -52,9 +55,9 @@ class QLearner:
         self.mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length):
             if self.args.name == 'point_like_smac_parallel':
-                agent_outs = self.mac.forward(batch, t=t, sum_group=False)
+                agent_outs, g = self.mac.forward(batch, t=t, sum_group=False)
             else:
-                agent_outs = self.mac.forward(batch, t=t)
+                agent_outs, g = self.mac.forward(batch, t=t)
 
             mac_out.append(agent_outs)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
@@ -73,9 +76,9 @@ class QLearner:
         self.target_mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length):
             if self.args.name == 'point_like_smac_parallel':
-                target_agent_outs = self.target_mac.forward(batch, t=t, sum_group=False)
+                target_agent_outs, target_g = self.target_mac.forward(batch, t=t, sum_group=False)
             else:
-                target_agent_outs = self.target_mac.forward(batch, t=t)
+                target_agent_outs, target_g = self.target_mac.forward(batch, t=t)
 
             target_mac_out.append(target_agent_outs)
 

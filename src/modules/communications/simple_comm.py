@@ -1,3 +1,4 @@
+import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -17,6 +18,6 @@ class SimpleComm(nn.Module):
         g = F.relu(self.g_fc1(input))
         g = F.relu(self.g_fc2(g))
         g = F.relu(self.g_fc3(g))
-        g = F.tanh(self.g_fc4(g))
+        g = th.sigmoid(self.g_fc4(g))
 
-        return input * g
+        return input * g, g

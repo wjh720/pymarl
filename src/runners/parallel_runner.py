@@ -37,6 +37,8 @@ class ParallelRunner:
         self.test_returns = []
         self.train_stats = {}
         self.test_stats = {}
+        self.train_comm = []
+        self.test_comm = []
 
         self.log_train_stats_t = -100000
 
@@ -85,6 +87,9 @@ class ParallelRunner:
     def run(self, test_mode=False):
         self.reset()
 
+        if test_mode:
+            a = 1
+
         all_terminated = False
         episode_returns = [0 for _ in range(self.batch_size)]
         episode_lengths = [0 for _ in range(self.batch_size)]
@@ -92,12 +97,15 @@ class ParallelRunner:
         terminated = [False for _ in range(self.batch_size)]
         envs_not_terminated = [b_idx for b_idx, termed in enumerate(terminated) if not termed]
         final_env_infos = []  # may store extra stats like battle won. this is filled in ORDER OF TERMINATION
+        gs = None
 
         while True:
 
             # Pass the entire batch of experiences up till now to the agents
             # Receive the actions for each agent at this timestep in a batch for each un-terminated env
-            actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, bs=envs_not_terminated, test_mode=test_mode)
+
+            actions, g = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, bs=envs_not_terminated,
+                                                 test_mode=test_mode)
             cpu_actions = actions.to("cpu").numpy()
 
             # Update the actions taken
@@ -119,6 +127,8 @@ class ParallelRunner:
             all_terminated = all(terminated)
             if all_terminated:
                 break
+
+            gs = g
 
             # Post step data we will insert for the current timestep
             post_transition_data = {
@@ -185,21 +195,23 @@ class ParallelRunner:
         cur_stats.update({k: sum(d.get(k, 0) for d in infos) for k in set.union(*[set(d) for d in infos])})
         cur_stats["n_episodes"] = self.batch_size + cur_stats.get("n_episodes", 0)
         cur_stats["ep_length"] = sum(episode_lengths) + cur_stats.get("ep_length", 0)
+        cur_comm = self.test_comm if test_mode else self.train_comm
 
         cur_returns.extend(episode_returns)
+        cur_comm.append(gs)
 
         n_test_runs = max(1, self.args.test_nepisode // self.batch_size) * self.batch_size
         if test_mode and (len(self.test_returns) == n_test_runs):
-            self._log(cur_returns, cur_stats, log_prefix)
+            self._log(cur_returns, cur_stats, log_prefix, cur_comm)
         elif self.t_env - self.log_train_stats_t >= self.args.runner_log_interval:
-            self._log(cur_returns, cur_stats, log_prefix)
+            self._log(cur_returns, cur_stats, log_prefix, cur_comm)
             if hasattr(self.mac.action_selector, "epsilon"):
                 self.logger.log_stat("epsilon", self.mac.action_selector.epsilon, self.t_env)
             self.log_train_stats_t = self.t_env
 
         return self.batch
 
-    def _log(self, returns, stats, prefix):
+    def _log(self, returns, stats, prefix, comm):
         self.logger.log_stat(prefix + "return_mean", np.mean(returns), self.t_env)
         self.logger.log_stat(prefix + "return_std", np.std(returns), self.t_env)
         returns.clear()
@@ -208,6 +220,25 @@ class ParallelRunner:
             if k != "n_episodes":
                 self.logger.log_stat(prefix + k + "_mean" , v/stats["n_episodes"], self.t_env)
         stats.clear()
+
+        m_comm = th.cat(comm, dim=0).detach().cpu().squeeze().numpy()
+        m_comm_mean = m_comm.mean(axis=0)
+        m_comm_std = m_comm.std(axis=0)
+
+        self.logger.log_stat(prefix + 'comm_mean_0', m_comm_mean[0], self.t_env)
+        self.logger.log_stat(prefix + 'comm_mean_1', m_comm_mean[1], self.t_env)
+        self.logger.log_stat(prefix + 'comm_mean_2', m_comm_mean[2], self.t_env)
+        self.logger.log_stat(prefix + 'comm_std_0', m_comm_std[0], self.t_env)
+        self.logger.log_stat(prefix + 'comm_std_1', m_comm_std[1], self.t_env)
+        self.logger.log_stat(prefix + 'comm_std_2', m_comm_std[2], self.t_env)
+        self.logger.log_stat(prefix + 'comm_len', m_comm.shape[0], self.t_env)
+        # except:
+        #     print(m_comm.shape)
+        #     print(m_comm_mean)
+        #     print(m_comm_std)
+        #
+        #     a = 1
+        comm.clear()
 
 
 def env_worker(remote, env_fn):
